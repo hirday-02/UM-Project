@@ -237,7 +237,7 @@ with tab3:
 
         def get_duration_bucket(d):
             if d < 15: return 'Short (<15h)'
-            elif d < 15: return 'Medium (15-30h)'
+            elif d < 30: return 'Medium (15-30h)'
             elif d < 45: return 'Long (30-45h)'
             else: return 'Extensive (45h+)'
 
@@ -257,31 +257,29 @@ with tab3:
         rating_tier = get_rating_tier(input_rating)
         exp_bucket = get_exp_bucket(input_exp)
 
-        # Build feature vector matching metadata['feature_names']
+        # Build feature dictionary matching metadata['feature_names'] with explicit float64 dtype
         feature_names = metadata['feature_names']
-        X_input = pd.DataFrame(0, index=[0], columns=feature_names)
+        input_dict = {col: 0.0 for col in feature_names}
 
-        # Numerical fields
         num_dict = {
-            'CoursePrice': input_price,
-            'CourseDuration': input_duration,
-            'CourseRating': input_rating,
-            'YearsOfExperience': input_exp,
-            'TeacherRating': input_trating,
-            'CategoryAvgRevenue': cat_avg_rev,
-            'CategoryAvgEnrollment': cat_avg_enr,
-            'CategoryAvgPrice': cat_avg_price,
-            'InstructorQualityScore': inst_quality,
-            'ExpertiseMatchScore': exp_match,
-            'IsPaid': is_paid,
-            'CourseLevel_Encoded': level_encoded
+            'CoursePrice': float(input_price),
+            'CourseDuration': float(input_duration),
+            'CourseRating': float(input_rating),
+            'YearsOfExperience': float(input_exp),
+            'TeacherRating': float(input_trating),
+            'CategoryAvgRevenue': float(cat_avg_rev),
+            'CategoryAvgEnrollment': float(cat_avg_enr),
+            'CategoryAvgPrice': float(cat_avg_price),
+            'InstructorQualityScore': float(inst_quality),
+            'ExpertiseMatchScore': float(exp_match),
+            'IsPaid': float(is_paid),
+            'CourseLevel_Encoded': float(level_encoded)
         }
 
-        for col, val in num_dict.items():
-            if col in X_input.columns:
-                X_input.loc[0, col] = val
+        for k, v in num_dict.items():
+            if k in input_dict:
+                input_dict[k] = v
 
-        # Categorical one-hot flags
         cat_flags = [
             f"CourseCategory_{input_category}",
             f"PriceBand_{price_band}",
@@ -292,8 +290,10 @@ with tab3:
         ]
 
         for flag in cat_flags:
-            if flag in X_input.columns:
-                X_input.loc[0, flag] = 1
+            if flag in input_dict:
+                input_dict[flag] = 1.0
+
+        X_input = pd.DataFrame([input_dict], columns=feature_names, dtype=np.float64)
 
         # Scale numerical features using saved StandardScaler
         X_input_scaled = X_input.copy()
@@ -307,8 +307,7 @@ with tab3:
         pred_demand = int(np.clip(round(raw_demand_pred), 100, 220))
         pred_revenue = float(np.maximum(raw_rev_pred, 0.0)) if is_paid else 0.0
 
-        # --- Business Decision Logic (Task 7 Requirements) ---
-        # 1. Demand Level
+        # --- Business Decision Logic ---
         if pred_demand >= 175:
             demand_level = "High Demand"
             demand_badge = "badge-success"
@@ -319,7 +318,6 @@ with tab3:
             demand_level = "Low Demand"
             demand_badge = "badge-danger"
 
-        # 2. Revenue Category
         if pred_revenue >= 60000:
             rev_category = "High Yield"
             rev_badge = "badge-success"
@@ -330,7 +328,6 @@ with tab3:
             rev_category = "Low Yield"
             rev_badge = "badge-danger"
 
-        # 3. Launch Recommendation & Risk
         if demand_level == "High Demand" and rev_category == "High Yield":
             recommendation = "🚀 Highly Recommended Launch"
             risk_level = "Low Risk"
@@ -344,7 +341,6 @@ with tab3:
             risk_level = "Moderate Risk"
             risk_badge = "badge-warning"
 
-        # 4. Pricing Suggestion
         if input_price > cat_avg_price * 1.3:
             pricing_suggestion = f"Above category average (₹{cat_avg_price:.2f}). Consider bundling premium 1-on-1 mentorship."
         elif input_price < cat_avg_price * 0.7 and is_paid:
@@ -352,7 +348,7 @@ with tab3:
         else:
             pricing_suggestion = f"Optimal pricing aligned with category benchmark (₹{cat_avg_price:.2f})."
 
-        # --- Display Results ---
+        # Display Results
         st.success("✓ ML Simulation Completed via Trained Joblib Regressors!")
         
         m_col1, m_col2 = st.columns(2)
